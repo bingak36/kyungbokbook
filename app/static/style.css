@@ -1,0 +1,47 @@
+section {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+}
+
+nav {
+    display: flex;
+    justify-content: flex-end;
+    gap: 20px;
+    min-width: var(--width-card);
+    max-width: var(--width-card-wide);
+}
+
+nav a {
+    text-decoration: none;
+}
+
+.book {
+    position: relative;
+    padding: 10px;
+    box-shadow: 0 0 5px #00000017;
+}
+
+.isFav {
+    padding: 0;
+    box-shadow: none;
+    border: none;
+    position: absolute;
+    bottom: 10px;
+    right: 20px;
+    min-width: 0;
+    max-width: 0;
+}
+
+.heart_button {
+    background-color: transparent;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    color: crimson;
+    font-size: 28px;
+}
+
+.heart_button:hover {
+    color: rgb(16, 0, 161);
+}

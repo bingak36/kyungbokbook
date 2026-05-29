@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+venv/
+venv312/
+.venv/
+env/
+
+# Environment files
+.env
+.env.*
+
+# VS Code
+.vscode/
+
+# Flask/FastAPI
+instance/
+.webassets-cache
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db

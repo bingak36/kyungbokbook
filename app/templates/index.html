@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <link rel="stylesheet" href="https://unpkg.com/mvp.css">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <header>
+        <h1>콜렉션 북북</h1>
+        <nav>
+            <a href="/">검색</a>
+            <a href="/favorites">즐겨찾기 목록</a>
+        </nav>
+    </header>
+    <center>
+        <form id="search_form" action="/search">
+            <input type="text" placeholder="keyword" id="search_input" name="q" value="{{ keyword or '' }}">
+            <button>검색</button>
+        </form>
+        {% if message %}
+        <p>{{ message }}</p>
+        {% endif %}
+    </center>
+    <main>
+        {% if books %}
+        <center>
+            <h3>{{ books|length }}개 데이터 수집...</h3>
+        </center>
+        <section>
+            {% for book in books %}
+            <div class="book">
+                {% if book.image %}
+                <img src="{{ book.image }}" width="150" height="150" alt="{{ book.publisher }}">
+                {% endif %}
+                <p>
+                    {% if book.publisher | length > 10 %}
+                    {{ book.publisher[:10] }}...
+                    {% else %}
+                    {{ book.publisher }}
+                    {% endif %}
+                </p>
+                <p>{{ "{:,}".format(book.price) }}원</p>
+                <form action="/favorites" method="post" class="isFav">
+                    <input type="hidden" name="keyword" value="{{ book.keyword }}">
+                    <input type="hidden" name="publisher" value="{{ book.publisher }}">
+                    <input type="hidden" name="price" value="{{ book.price }}">
+                    <input type="hidden" name="image" value="{{ book.image }}">
+                    <input type="hidden" name="next_url" value="{{ next_url }}">
+                    <button type="submit" class="heart_button" title="즐겨찾기">
+                        {% if book.is_favorite %}
+                        ♥
+                        {% else %}
+                        ♡
+                        {% endif %}
+                    </button>
+                </form>
+            </div>
+            {% endfor %}
+        </section>
+        {% else %}
+        <center>
+            <h3>0개 데이터 수집...</h3>
+        </center>
+        {% endif %}
+    </main>
+</body>
+</html>
