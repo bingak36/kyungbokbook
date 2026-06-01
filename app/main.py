@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import aiohttp
-from fastapi import FastAPI, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -26,6 +26,13 @@ SORT_OPTIONS = {
 async def search_news(keyword: str, display: int, start: int, sort: str):
     client = NaverNewsClient()
     return await client.search(keyword, display=display, start=start, sort=sort)
+
+
+def naver_error_message(error: aiohttp.ClientResponseError) -> str:
+    if error.status == 401:
+        return "네이버 API 인증에 실패했습니다. NAVER_API_ID와 NAVER_API_SECRET 값을 확인해주세요."
+
+    return f"네이버 API 요청에 실패했습니다. 상태 코드: {error.status}"
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -76,7 +83,7 @@ async def search_page(
         if not articles:
             message = "검색 결과가 없습니다."
     except aiohttp.ClientResponseError as error:
-        message = f"네이버 API 요청에 실패했습니다. 상태 코드: {error.status}"
+        message = naver_error_message(error)
     except Exception:
         message = "뉴스 검색 중 오류가 발생했습니다. API 키와 네트워크 상태를 확인해주세요."
 
@@ -104,5 +111,10 @@ async def search_news_api(
 ):
     keyword = q.strip()
     sort = sort if sort in SORT_OPTIONS else "date"
-    articles = await search_news(keyword, display, start, sort)
+
+    try:
+        articles = await search_news(keyword, display, start, sort)
+    except aiohttp.ClientResponseError as error:
+        raise HTTPException(status_code=error.status, detail=naver_error_message(error)) from error
+
     return {"keyword": keyword, "total": len(articles), "items": articles}
