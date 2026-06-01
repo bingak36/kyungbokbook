@@ -20,7 +20,7 @@ def get_secret(
         with open(json_path, encoding="utf-8") as f:
             secrets = json.load(f)
         return secrets[key]
-    except (FileNotFoundError, KeyError):
+    except (FileNotFoundError, KeyError, json.JSONDecodeError):
         pass
 
     if default_value is not None:
@@ -51,5 +51,3 @@ except EnvironmentError:
 
 MONGODB_DB_NAME = MONGO_DB_NAME
 MONGODB_URI = MONGO_URL
-NAVER_API_SECRET = get_secret("NAVER_API_SECRET")
-NAVER_API_ID = get_secret("NAVER_API_ID")
