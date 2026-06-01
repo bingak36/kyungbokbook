@@ -1,19 +1,15 @@
-import re
-from html import unescape
 from pathlib import Path
-from urllib.parse import parse_qs
 
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+import aiohttp
+from fastapi import FastAPI, Query, Request
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from app.book_scraper import NaverBookScraper
-from app.models import mongodb
-from app.models.book import BookModel
+from app.naver_news import NaverNewsClient
 
 
-app = FastAPI()
+app = FastAPI(title="Naver News Search")
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -21,18 +17,15 @@ app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
 
 
-DB_ERROR_MESSAGE = "즐겨찾기 DB 연결을 확인해주세요."
+SORT_OPTIONS = {
+    "date": "최신순",
+    "sim": "정확도순",
+}
 
 
-def clean_html(value: str) -> str:
-    return unescape(re.sub(r"<[^>]+>", "", value or ""))
-
-
-def parse_price(value: str | int | None) -> int:
-    try:
-        return int(value or 0)
-    except (TypeError, ValueError):
-        return 0
+async def search_news(keyword: str, display: int, start: int, sort: str):
+    client = NaverNewsClient()
+    return await client.search(keyword, display=display, start=start, sort=sort)
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -40,127 +33,76 @@ async def root(request: Request):
     return templates.TemplateResponse(
         request,
         "index.html",
-        {"title": "북북", "books": [], "next_url": "/"},
+        {
+            "title": "네이버 뉴스 검색",
+            "articles": [],
+            "sort_options": SORT_OPTIONS,
+            "sort": "date",
+            "display": 10,
+        },
     )
 
 
 @app.get("/search", response_class=HTMLResponse)
-async def read_item(request: Request, q: str = ""):
+async def search_page(
+    request: Request,
+    q: str = "",
+    display: int = Query(default=10, ge=1, le=100),
+    start: int = Query(default=1, ge=1, le=1000),
+    sort: str = "date",
+):
     keyword = q.strip()
+    sort = sort if sort in SORT_OPTIONS else "date"
 
     if not keyword:
         return templates.TemplateResponse(
-            request=request,
-            name="index.html",
-            context={
-                "title": "북북",
-                "books": [],
+            request,
+            "index.html",
+            {
+                "title": "네이버 뉴스 검색",
+                "articles": [],
                 "message": "검색어를 입력해주세요.",
-                "next_url": "/",
+                "sort_options": SORT_OPTIONS,
+                "sort": sort,
+                "display": display,
             },
         )
 
-    naver_book_scraper = NaverBookScraper()
-    books = await naver_book_scraper.search(keyword, 10)
-
     message = None
+    articles = []
+
     try:
-        favorite_books = await mongodb.engine.find(BookModel, BookModel.is_favorite == True)
-        favorite_images = [book.image for book in favorite_books]
+        articles = await search_news(keyword, display, start, sort)
+        if not articles:
+            message = "검색 결과가 없습니다."
+    except aiohttp.ClientResponseError as error:
+        message = f"네이버 API 요청에 실패했습니다. 상태 코드: {error.status}"
     except Exception:
-        favorite_images = []
-        message = DB_ERROR_MESSAGE
-
-    book_models = [
-        BookModel(
-            keyword=keyword,
-            publisher=clean_html(book.get("publisher", "")),
-            price=parse_price(book.get("discount")),
-            image=book.get("image", ""),
-        )
-        for book in books
-    ]
-
-    for book_model in book_models:
-        if book_model.image in favorite_images:
-            book_model.is_favorite = True
+        message = "뉴스 검색 중 오류가 발생했습니다. API 키와 네트워크 상태를 확인해주세요."
 
     return templates.TemplateResponse(
-        request=request,
-        name="index.html",
-        context={
-            "title": "북북",
+        request,
+        "index.html",
+        {
+            "title": "네이버 뉴스 검색",
             "keyword": keyword,
-            "books": book_models,
-            "next_url": f"/search?q={keyword}",
+            "articles": articles,
             "message": message,
+            "sort_options": SORT_OPTIONS,
+            "sort": sort,
+            "display": display,
         },
     )
 
 
-@app.post("/favorites")
-async def toggle_favorite(request: Request):
-    body = (await request.body()).decode()
-    form = {key: values[0] for key, values in parse_qs(body).items()}
-
-    keyword = form.get("keyword", "")
-    publisher = form.get("publisher", "")
-    price = parse_price(form.get("price"))
-    image = form.get("image", "")
-    next_url = form.get("next_url", "/")
-
-    try:
-        favorite_book = await mongodb.engine.find_one(
-            BookModel,
-            (BookModel.keyword == keyword)
-            & (BookModel.publisher == publisher)
-            & (BookModel.image == image)
-            & (BookModel.is_favorite == True),
-        )
-
-        if favorite_book:
-            await mongodb.engine.delete(favorite_book)
-        else:
-            book = BookModel(
-                keyword=keyword,
-                publisher=publisher,
-                price=price,
-                image=image,
-                is_favorite=True,
-            )
-            await mongodb.engine.save(book)
-    except Exception:
-        return RedirectResponse(url=next_url, status_code=303)
-
-    return RedirectResponse(url=next_url, status_code=303)
-
-
-@app.get("/favorites", response_class=HTMLResponse)
-async def favorites(request: Request):
-    message = None
-    try:
-        books = await mongodb.engine.find(BookModel, BookModel.is_favorite == True)
-    except Exception:
-        books = []
-        message = DB_ERROR_MESSAGE
-
-    return templates.TemplateResponse(
-        request=request,
-        name="index.html",
-        context={
-            "title": "즐겨찾기 목록",
-            "books": books,
-            "next_url": "/favorites",
-            "message": message,
-        },
-    )
-
-
-@app.on_event("startup")
-async def on_app_start():
-    mongodb.connect()
-
-
-@app.on_event("shutdown")
-async def on_app_shutdown():
-    mongodb.close()
+@app.get("/api/news")
+async def search_news_api(
+    q: str,
+    display: int = Query(default=10, ge=1, le=100),
+    start: int = Query(default=1, ge=1, le=1000),
+    sort: str = "date",
+):
+    keyword = q.strip()
+    sort = sort if sort in SORT_OPTIONS else "date"
+    articles = await search_news(keyword, display, start, sort)
+    return {"keyword": keyword, "total": len(articles), "items": articles}

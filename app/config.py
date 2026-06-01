@@ -39,8 +39,15 @@ def get_secret_any(*keys: str):
     raise EnvironmentError(f"Set one of these environment variables: {', '.join(keys)}")
 
 
-MONGO_DB_NAME = get_secret_any("MONGO_DB_NAME", "MONGODB_DB_NAME")
-MONGO_URL = get_secret_any("MONGO_URI", "MONGODB_URI")
+try:
+    MONGO_DB_NAME = get_secret_any("MONGO_DB_NAME", "MONGODB_DB_NAME")
+except EnvironmentError:
+    MONGO_DB_NAME = "kyungbokbook"
+
+try:
+    MONGO_URL = get_secret_any("MONGO_URI", "MONGODB_URI")
+except EnvironmentError:
+    MONGO_URL = "mongodb://localhost:27017"
 
 MONGODB_DB_NAME = MONGO_DB_NAME
 MONGODB_URI = MONGO_URL
