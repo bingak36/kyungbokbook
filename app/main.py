@@ -60,6 +60,10 @@ def back_to_sender(request: Request, fallback: str = "/favorites"):
     return RedirectResponse(target, status_code=303)
 
 
+def favorites_error_redirect():
+    return RedirectResponse("/favorites?error=1", status_code=303)
+
+
 @app.get("/", response_class=HTMLResponse)
 async def root(request: Request):
     return templates.TemplateResponse(request, "index.html", page_context())
@@ -122,6 +126,9 @@ async def favorites_page(request: Request):
         favorites = []
         message = "MongoDB에서 즐겨찾기를 불러오지 못했습니다. 연결 정보를 확인해주세요."
 
+    if request.query_params.get("error"):
+        message = "즐겨찾기 저장 작업에 실패했습니다. MongoDB 연결 정보를 확인해주세요."
+
     if not message and not favorites:
         message = "아직 즐겨찾기한 기사가 없습니다."
 
@@ -147,22 +154,30 @@ async def create_favorite(
     pub_date: str = Form(default=""),
     image_url: str = Form(default=""),
 ):
-    await add_favorite(
-        {
-            "title": title,
-            "originallink": originallink,
-            "link": link,
-            "description": description,
-            "pub_date": pub_date,
-            "image_url": image_url,
-        }
-    )
+    try:
+        await add_favorite(
+            {
+                "title": title,
+                "originallink": originallink,
+                "link": link,
+                "description": description,
+                "pub_date": pub_date,
+                "image_url": image_url,
+            }
+        )
+    except Exception:
+        return favorites_error_redirect()
+
     return back_to_sender(request, "/favorites")
 
 
 @app.post("/favorites/delete")
 async def delete_favorite(request: Request, article_id: str = Form(...)):
-    await remove_favorite(article_id)
+    try:
+        await remove_favorite(article_id)
+    except Exception:
+        return favorites_error_redirect()
+
     return back_to_sender(request, "/favorites")
 
 
@@ -186,5 +201,12 @@ async def search_news_api(
 
 @app.get("/api/favorites")
 async def favorites_api():
-    favorites = await load_favorites()
+    try:
+        favorites = await load_favorites()
+    except Exception as error:
+        raise HTTPException(
+            status_code=503,
+            detail="MongoDB에서 즐겨찾기를 불러오지 못했습니다.",
+        ) from error
+
     return {"total": len(favorites), "items": favorites}
