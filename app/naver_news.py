@@ -36,6 +36,8 @@ class NewsArticle:
     description: str
     pub_date: str
     image_url: str = ""
+    id: str = ""
+    is_favorite: bool = False
 
     @classmethod
     def from_api_item(cls, item: dict):

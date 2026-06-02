@@ -29,3 +29,4 @@ instance/
 Thumbs.db
 
 secrets.json
+favorites.json

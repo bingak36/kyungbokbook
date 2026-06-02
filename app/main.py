@@ -1,11 +1,12 @@
 from pathlib import Path
 
 import aiohttp
-from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, Form, HTTPException, Query, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from app.favorites import add_favorite, load_favorites, mark_favorites, remove_favorite
 from app.naver_news import NaverNewsClient
 
 
@@ -25,7 +26,8 @@ SORT_OPTIONS = {
 
 async def search_news(keyword: str, display: int, start: int, sort: str):
     client = NaverNewsClient()
-    return await client.search(keyword, display=display, start=start, sort=sort)
+    articles = await client.search(keyword, display=display, start=start, sort=sort)
+    return mark_favorites(articles)
 
 
 def naver_error_message(error: aiohttp.ClientResponseError) -> str:
@@ -35,19 +37,29 @@ def naver_error_message(error: aiohttp.ClientResponseError) -> str:
     return f"네이버 API 요청에 실패했습니다. 상태 코드: {error.status}"
 
 
+def page_context(**values):
+    context = {
+        "title": "네이버 뉴스 검색",
+        "keyword": "",
+        "articles": [],
+        "message": None,
+        "sort_options": SORT_OPTIONS,
+        "sort": "date",
+        "display": 10,
+        "page": "search",
+    }
+    context.update(values)
+    return context
+
+
+def back_to_sender(request: Request, fallback: str = "/favorites"):
+    target = request.headers.get("referer") or fallback
+    return RedirectResponse(target, status_code=303)
+
+
 @app.get("/", response_class=HTMLResponse)
 async def root(request: Request):
-    return templates.TemplateResponse(
-        request,
-        "index.html",
-        {
-            "title": "네이버 뉴스 검색",
-            "articles": [],
-            "sort_options": SORT_OPTIONS,
-            "sort": "date",
-            "display": 10,
-        },
-    )
+    return templates.TemplateResponse(request, "index.html", page_context())
 
 
 @app.get("/search", response_class=HTMLResponse)
@@ -65,14 +77,11 @@ async def search_page(
         return templates.TemplateResponse(
             request,
             "index.html",
-            {
-                "title": "네이버 뉴스 검색",
-                "articles": [],
-                "message": "검색어를 입력해주세요.",
-                "sort_options": SORT_OPTIONS,
-                "sort": sort,
-                "display": display,
-            },
+            page_context(
+                message="검색어를 입력해주세요.",
+                sort=sort,
+                display=display,
+            ),
         )
 
     message = None
@@ -90,16 +99,60 @@ async def search_page(
     return templates.TemplateResponse(
         request,
         "index.html",
-        {
-            "title": "네이버 뉴스 검색",
-            "keyword": keyword,
-            "articles": articles,
-            "message": message,
-            "sort_options": SORT_OPTIONS,
-            "sort": sort,
-            "display": display,
-        },
+        page_context(
+            keyword=keyword,
+            articles=articles,
+            message=message,
+            sort=sort,
+            display=display,
+        ),
     )
+
+
+@app.get("/favorites", response_class=HTMLResponse)
+async def favorites_page(request: Request):
+    favorites = load_favorites()
+    message = None if favorites else "아직 즐겨찾기한 기사가 없습니다."
+
+    return templates.TemplateResponse(
+        request,
+        "index.html",
+        page_context(
+            title="즐겨찾기",
+            articles=favorites,
+            message=message,
+            page="favorites",
+        ),
+    )
+
+
+@app.post("/favorites")
+async def create_favorite(
+    request: Request,
+    title: str = Form(default=""),
+    originallink: str = Form(default=""),
+    link: str = Form(default=""),
+    description: str = Form(default=""),
+    pub_date: str = Form(default=""),
+    image_url: str = Form(default=""),
+):
+    add_favorite(
+        {
+            "title": title,
+            "originallink": originallink,
+            "link": link,
+            "description": description,
+            "pub_date": pub_date,
+            "image_url": image_url,
+        }
+    )
+    return back_to_sender(request, "/favorites")
+
+
+@app.post("/favorites/delete")
+async def delete_favorite(request: Request, article_id: str = Form(...)):
+    remove_favorite(article_id)
+    return back_to_sender(request, "/favorites")
 
 
 @app.get("/api/news")
@@ -118,3 +171,9 @@ async def search_news_api(
         raise HTTPException(status_code=error.status, detail=naver_error_message(error)) from error
 
     return {"keyword": keyword, "total": len(articles), "items": articles}
+
+
+@app.get("/api/favorites")
+async def favorites_api():
+    favorites = load_favorites()
+    return {"total": len(favorites), "items": favorites}

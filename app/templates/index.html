@@ -10,20 +10,24 @@
     <header class="site-header">
         <nav>
             <a class="brand" href="/">네이버 뉴스 검색</a>
-            <a href="/api/news?q={{ keyword or '경제' }}" target="_blank">JSON API 보기</a>
+            <div class="nav-links">
+                <a href="/favorites">즐겨찾기</a>
+                <a href="/api/news?q={{ keyword or '경제' }}" target="_blank" rel="noopener">JSON API 보기</a>
+            </div>
         </nav>
     </header>
 
     <main class="page">
+        {% if page != "favorites" %}
         <section class="search-panel">
-            <h1>뉴스 검색 API 응용 프로그램</h1>
-            <p>뉴스의 대표 이미지와 제목을 합쳐 카드뉴스처럼 보여줍니다.</p>
+            <h1>뉴스 검색 API 활용 프로그램</h1>
+            <p>뉴스 제목, 요약, 링크, 대표 이미지를 카드 형식으로 보여줍니다.</p>
 
             <form class="search-form" action="/search" method="get">
                 <input
                     type="search"
                     name="q"
-                    placeholder="예: 인공지능, 경제, 날씨"
+                    placeholder="검색어 입력: 경제, AI, 스포츠"
                     value="{{ keyword or '' }}"
                     aria-label="검색어"
                     required
@@ -36,15 +40,21 @@
                 <input type="number" name="display" min="1" max="100" value="{{ display }}" aria-label="표시 개수">
                 <button type="submit">검색</button>
             </form>
-
-            {% if message %}
-            <p class="message">{{ message }}</p>
-            {% endif %}
         </section>
+        {% else %}
+        <section class="search-panel">
+            <h1>즐겨찾기</h1>
+            <p>저장한 기사를 한 곳에서 다시 확인할 수 있습니다.</p>
+        </section>
+        {% endif %}
+
+        {% if message %}
+        <p class="message">{{ message }}</p>
+        {% endif %}
 
         <section class="results">
             <div class="results-header">
-                <h2>검색 결과</h2>
+                <h2>{% if page == "favorites" %}즐겨찾기 기사{% else %}검색 결과{% endif %}</h2>
                 <span>{{ articles|length }}건</span>
             </div>
 
@@ -71,13 +81,30 @@
                             <a href="{{ article.originallink }}" target="_blank" rel="noopener">원문</a>
                             {% endif %}
                         </div>
+
+                        {% if article.is_favorite %}
+                        <form class="favorite-form" action="/favorites/delete" method="post">
+                            <input type="hidden" name="article_id" value="{{ article.id }}">
+                            <button class="favorite-button secondary" type="submit">즐겨찾기 삭제</button>
+                        </form>
+                        {% else %}
+                        <form class="favorite-form" action="/favorites" method="post">
+                            <input type="hidden" name="title" value="{{ article.title }}">
+                            <input type="hidden" name="originallink" value="{{ article.originallink }}">
+                            <input type="hidden" name="link" value="{{ article.link }}">
+                            <input type="hidden" name="description" value="{{ article.description }}">
+                            <input type="hidden" name="pub_date" value="{{ article.pub_date }}">
+                            <input type="hidden" name="image_url" value="{{ article.image_url }}">
+                            <button class="favorite-button" type="submit">즐겨찾기 추가</button>
+                        </form>
+                        {% endif %}
                     </div>
                 </li>
                 {% endfor %}
             </ul>
             {% else %}
             <div class="empty-state">
-                <p>아직 검색 결과가 없습니다.</p>
+                <p>{% if page == "favorites" %}저장된 즐겨찾기가 없습니다.{% else %}아직 검색 결과가 없습니다.{% endif %}</p>
             </div>
             {% endif %}
         </section>
