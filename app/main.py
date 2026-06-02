@@ -27,7 +27,10 @@ SORT_OPTIONS = {
 async def search_news(keyword: str, display: int, start: int, sort: str):
     client = NaverNewsClient()
     articles = await client.search(keyword, display=display, start=start, sort=sort)
-    return mark_favorites(articles)
+    try:
+        return await mark_favorites(articles)
+    except Exception:
+        return articles
 
 
 def naver_error_message(error: aiohttp.ClientResponseError) -> str:
@@ -94,7 +97,7 @@ async def search_page(
     except aiohttp.ClientResponseError as error:
         message = naver_error_message(error)
     except Exception:
-        message = "뉴스 검색 중 오류가 발생했습니다. API 키와 네트워크 상태를 확인해주세요."
+        message = "뉴스 검색 중 오류가 발생했습니다. API 키, MongoDB 연결, 네트워크 상태를 확인해주세요."
 
     return templates.TemplateResponse(
         request,
@@ -111,8 +114,16 @@ async def search_page(
 
 @app.get("/favorites", response_class=HTMLResponse)
 async def favorites_page(request: Request):
-    favorites = load_favorites()
-    message = None if favorites else "아직 즐겨찾기한 기사가 없습니다."
+    message = None
+
+    try:
+        favorites = await load_favorites()
+    except Exception:
+        favorites = []
+        message = "MongoDB에서 즐겨찾기를 불러오지 못했습니다. 연결 정보를 확인해주세요."
+
+    if not message and not favorites:
+        message = "아직 즐겨찾기한 기사가 없습니다."
 
     return templates.TemplateResponse(
         request,
@@ -136,7 +147,7 @@ async def create_favorite(
     pub_date: str = Form(default=""),
     image_url: str = Form(default=""),
 ):
-    add_favorite(
+    await add_favorite(
         {
             "title": title,
             "originallink": originallink,
@@ -151,7 +162,7 @@ async def create_favorite(
 
 @app.post("/favorites/delete")
 async def delete_favorite(request: Request, article_id: str = Form(...)):
-    remove_favorite(article_id)
+    await remove_favorite(article_id)
     return back_to_sender(request, "/favorites")
 
 
@@ -175,5 +186,5 @@ async def search_news_api(
 
 @app.get("/api/favorites")
 async def favorites_api():
-    favorites = load_favorites()
+    favorites = await load_favorites()
     return {"total": len(favorites), "items": favorites}
